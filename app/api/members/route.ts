@@ -1,34 +1,23 @@
-import { asc, eq } from 'drizzle-orm';
-import { getDb } from '@/db';
-import { members } from '@/db/schema';
-import { requireWorkspaceMember } from '../authz';
+import { workspaceContext } from '../authz';
 
 export async function GET() {
-  const auth = await requireWorkspaceMember();
-  if ('error' in auth) return auth.error;
-  return Response.json(await getDb().select().from(members).orderBy(asc(members.createdAt)));
+  const context = await workspaceContext(); if ('error' in context) return context.error;
+  const [{ data: memberships }, { data: invitations }] = await Promise.all([
+    context.supabase.from('memberships').select('role,profiles!memberships_user_id_fkey(email,display_name)').eq('workspace_id', context.workspaceId),
+    context.supabase.from('invitations').select('email,role,status').eq('workspace_id', context.workspaceId).eq('status', 'pending'),
+  ]);
+  const active = (memberships ?? []).map((row) => { const profile = row.profiles as unknown as { email: string; display_name: string }; return { email: profile.email, name: profile.display_name, role: row.role, status: 'active' }; });
+  const pending = (invitations ?? []).map((row) => ({ email: row.email, name: row.email.split('@')[0], role: row.role, status: 'invited' }));
+  return Response.json([...active, ...pending]);
 }
 
 export async function POST(request: Request) {
-  const auth = await requireWorkspaceMember();
-  if ('error' in auth) return auth.error;
-  if (auth.member.role !== 'owner') return Response.json({ error: 'Solo el propietario puede invitar' }, { status: 403 });
+  const context = await workspaceContext(); if ('error' in context) return context.error;
+  if (context.role !== 'owner') return Response.json({ error: 'Solo el propietario puede invitar' }, { status: 403 });
   const body = await request.json() as { email?: string; name?: string };
   const email = body.email?.trim().toLowerCase();
   if (!email || !email.includes('@')) return Response.json({ error: 'Escribe un email válido' }, { status: 400 });
-  const member = { email, name: body.name?.trim() || email.split('@')[0], role: 'member' as const, status: 'invited' as const, createdAt: new Date() };
-  await getDb().insert(members).values(member).onConflictDoUpdate({ target: members.email, set: { name: member.name } });
-  return Response.json(member, { status: 201 });
-}
-
-export async function DELETE(request: Request) {
-  const auth = await requireWorkspaceMember();
-  if ('error' in auth) return auth.error;
-  if (auth.member.role !== 'owner') return Response.json({ error: 'Solo el propietario puede eliminar miembros' }, { status: 403 });
-  const email = new URL(request.url).searchParams.get('email')?.toLowerCase();
-  if (!email) return Response.json({ error: 'Falta el email' }, { status: 400 });
-  const target = await getDb().select().from(members).where(eq(members.email, email)).get();
-  if (target?.role === 'owner') return Response.json({ error: 'No puedes eliminar al propietario' }, { status: 400 });
-  await getDb().delete(members).where(eq(members.email, email));
-  return new Response(null, { status: 204 });
+  const { data, error } = await context.supabase.from('invitations').upsert({ workspace_id: context.workspaceId, email, role: 'member', status: 'pending', invited_by: context.user.id }, { onConflict: 'workspace_id,email' }).select().single();
+  if (error) return Response.json({ error: error.message }, { status: 400 });
+  return Response.json({ email: data.email, name: body.name?.trim() || email.split('@')[0], role: data.role, status: 'invited' }, { status: 201 });
 }

@@ -1,30 +1,11 @@
-import { eq } from 'drizzle-orm';
-import { env } from 'cloudflare:workers';
-import { getDb } from '@/db';
-import { members } from '@/db/schema';
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { createClient } from '@/lib/supabase/server';
 
-export async function ensureMembersTable() {
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS members (
-    email TEXT PRIMARY KEY NOT NULL,
-    name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'member',
-    status TEXT NOT NULL DEFAULT 'invited',
-    created_at INTEGER NOT NULL
-  )`).run();
-}
-
-export async function requireWorkspaceMember() {
-  const user = await getChatGPTUser();
+export async function workspaceContext() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: Response.json({ error: 'Debes iniciar sesión' }, { status: 401 }) } as const;
-  await ensureMembersTable();
-  const db = getDb();
-  const count = await env.DB.prepare('SELECT COUNT(*) AS total FROM members').first<{ total: number }>();
-  if (!count?.total) {
-    await db.insert(members).values({ email: user.email.toLowerCase(), name: user.displayName, role: 'owner', status: 'active', createdAt: new Date() });
-  }
-  const member = await db.select().from(members).where(eq(members.email, user.email.toLowerCase())).get();
-  if (!member) return { error: Response.json({ error: 'No perteneces a este espacio' }, { status: 403 }) } as const;
-  if (member.status !== 'active') await db.update(members).set({ status: 'active', name: user.displayName }).where(eq(members.email, member.email));
-  return { user, member: { ...member, status: 'active' as const } } as const;
+  await supabase.rpc('accept_my_invitations');
+  const { data: membership } = await supabase.from('memberships').select('workspace_id,role').eq('user_id', user.id).order('created_at').limit(1).single();
+  if (!membership) return { error: Response.json({ error: 'No tienes un espacio disponible' }, { status: 403 }) } as const;
+  return { supabase, user, workspaceId: membership.workspace_id as string, role: membership.role as 'owner' | 'member' } as const;
 }
