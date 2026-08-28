@@ -2,6 +2,7 @@ import { asc, eq } from 'drizzle-orm';
 import { env } from 'cloudflare:workers';
 import { getDb } from '@/db';
 import { tasks } from '@/db/schema';
+import { requireWorkspaceMember } from '../authz';
 
 const seed = [
   ['t1', 'Definir objetivos de septiembre', 'todo', 'high', 'Planeación', '2026-08-30'],
@@ -34,11 +35,15 @@ async function ensureDatabase() {
 }
 
 export async function GET() {
+  const auth = await requireWorkspaceMember();
+  if ('error' in auth) return auth.error;
   await ensureDatabase();
   return Response.json(await getDb().select().from(tasks).orderBy(asc(tasks.createdAt)));
 }
 
 export async function POST(request: Request) {
+  const auth = await requireWorkspaceMember();
+  if ('error' in auth) return auth.error;
   await ensureDatabase();
   const body = await request.json() as Partial<typeof tasks.$inferInsert>;
   if (!body.title?.trim()) return Response.json({ error: 'El título es obligatorio' }, { status: 400 });
@@ -52,6 +57,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const auth = await requireWorkspaceMember();
+  if ('error' in auth) return auth.error;
   await ensureDatabase();
   const body = await request.json() as Partial<typeof tasks.$inferInsert> & { id?: string };
   if (!body.id) return Response.json({ error: 'Falta el identificador' }, { status: 400 });
@@ -62,6 +69,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const auth = await requireWorkspaceMember();
+  if ('error' in auth) return auth.error;
   await ensureDatabase();
   const id = new URL(request.url).searchParams.get('id');
   if (!id) return Response.json({ error: 'Falta el identificador' }, { status: 400 });

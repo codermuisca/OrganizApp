@@ -11,3 +11,11 @@ export const tasks = sqliteTable('tasks', {
   assignee: text('assignee').notNull().default('CM'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 }, (table) => [index('idx_tasks_status_created').on(table.status, table.createdAt)]);
+
+export const members = sqliteTable('members', {
+  email: text('email').primaryKey(),
+  name: text('name').notNull(),
+  role: text('role', { enum: ['owner', 'member'] }).notNull().default('member'),
+  status: text('status', { enum: ['active', 'invited'] }).notNull().default('invited'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
