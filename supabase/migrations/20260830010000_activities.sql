@@ -23,6 +23,10 @@ on public.activity_logs(user_id, performed_at desc);
 alter table public.activities enable row level security;
 alter table public.activity_logs enable row level security;
 
+grant select, insert, update, delete
+on public.activities, public.activity_logs
+to authenticated;
+
 drop policy if exists "users manage their activities" on public.activities;
 create policy "users manage their activities" on public.activities
 for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
