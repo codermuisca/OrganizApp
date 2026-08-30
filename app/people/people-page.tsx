@@ -80,12 +80,35 @@ export default function PeoplePage({
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email, name }),
     });
+    const result = (await response.json()) as {
+      error?: string;
+      invitationStored?: boolean;
+    };
     if (response.ok) {
       setEmail('');
       setName('');
-      setNotice('Invitación preparada');
+      setNotice('Invitación enviada por correo');
       await loadMembers();
-    } else setNotice('No pudimos preparar la invitación.');
+    } else {
+      setNotice(result.error ?? 'No pudimos enviar la invitación.');
+      if (result.invitationStored) await loadMembers();
+    }
+    setSaving(false);
+  }
+
+  async function resend(member: Member) {
+    setSaving(true);
+    const response = await fetch('/api/members', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: member.email, name: member.name }),
+    });
+    const result = (await response.json()) as { error?: string };
+    setNotice(
+      response.ok
+        ? `Invitación reenviada a ${member.email}`
+        : (result.error ?? 'No pudimos reenviar la invitación.'),
+    );
     setSaving(false);
   }
 
@@ -218,6 +241,17 @@ export default function PeoplePage({
                       <Crown className="size-3" /> Tú
                     </span>
                   )}
+                  {isOwner && member.status === 'invited' && (
+                    <Button
+                      aria-label={`Reenviar invitación a ${member.name}`}
+                      variant="ghost"
+                      size="icon"
+                      disabled={saving}
+                      onClick={() => void resend(member)}
+                    >
+                      <Mail className="size-4 text-primary" />
+                    </Button>
+                  )}
                   {isOwner && member.userId !== user.id && (
                     <Button
                       aria-label={`Retirar a ${member.name}`}
@@ -239,7 +273,7 @@ export default function PeoplePage({
               <UserRoundPlus className="size-6 text-primary" />
               <h2 className="mt-3 text-lg font-semibold">Invitar persona</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                La invitación quedará vinculada a este espacio.
+                Recibirá por correo un enlace seguro para entrar a este espacio.
               </p>
               <label className="mt-5 block text-xs font-semibold">
                 Nombre
@@ -263,7 +297,7 @@ export default function PeoplePage({
               </label>
               <Button className="mt-5 w-full" disabled={saving}>
                 <Mail />
-                {saving ? 'Preparando...' : 'Preparar invitación'}
+                {saving ? 'Enviando...' : 'Enviar invitación'}
               </Button>
             </form>
           ) : (

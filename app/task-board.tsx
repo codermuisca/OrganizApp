@@ -249,11 +249,16 @@ export default function TaskBoard({
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: inviteEmail, name: inviteName }),
     });
+    const result = (await response.json()) as {
+      error?: string;
+      invitationStored?: boolean;
+    };
     if (!response.ok) {
-      setNotice('Revisa el email e intenta de nuevo.');
+      setNotice(result.error ?? 'No pudimos enviar la invitación.');
+      if (result.invitationStored) void loadTasks();
       return;
     }
-    const member = (await response.json()) as Member;
+    const member = result as Member;
     setMembers((current) => [
       ...current.filter((item) => item.email !== member.email),
       member,
@@ -261,7 +266,7 @@ export default function TaskBoard({
     setInviteOpen(false);
     setInviteEmail('');
     setInviteName('');
-    setNotice('Invitación preparada');
+    setNotice('Invitación enviada por correo');
     setTimeout(() => setNotice(''), 2500);
   }
 
@@ -676,7 +681,8 @@ export default function TaskBoard({
             <DialogHeader>
               <DialogTitle>Invitar participante</DialogTitle>
               <DialogDescription>
-                Podrá ver el tablero y recibir tareas asignadas.
+                Recibirá un enlace seguro para entrar, ver el tablero y recibir
+                tareas.
               </DialogDescription>
             </DialogHeader>
             <div className="mt-5 space-y-4">
@@ -730,7 +736,7 @@ export default function TaskBoard({
               <DialogClose render={<Button type="button" variant="outline" />}>
                 Cancelar
               </DialogClose>
-              <Button type="submit">Preparar invitación</Button>
+              <Button type="submit">Enviar invitación</Button>
             </DialogFooter>
           </form>
         </DialogContent>

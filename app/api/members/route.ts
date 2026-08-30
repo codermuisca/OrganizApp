@@ -1,4 +1,5 @@
 import { workspaceContext } from '../authz';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 export async function GET() {
   const context = await workspaceContext();
@@ -58,6 +59,24 @@ export async function POST(request: Request) {
   const email = body.email?.trim().toLowerCase();
   if (!email || !email.includes('@'))
     return Response.json({ error: 'Escribe un email válido' }, { status: 400 });
+  const { data: existingProfile } = await context.supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle();
+  if (existingProfile) {
+    const { data: existingMembership } = await context.supabase
+      .from('memberships')
+      .select('user_id')
+      .eq('workspace_id', context.workspaceId)
+      .eq('user_id', existingProfile.id)
+      .maybeSingle();
+    if (existingMembership)
+      return Response.json(
+        { error: 'Esta persona ya pertenece al espacio' },
+        { status: 409 },
+      );
+  }
   const { data, error } = await context.supabase
     .from('invitations')
     .upsert(
@@ -73,12 +92,42 @@ export async function POST(request: Request) {
     .select()
     .single();
   if (error) return Response.json({ error: error.message }, { status: 400 });
+  const authClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    },
+  );
+  const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '');
+  const origin = configuredOrigin || new URL(request.url).origin;
+  const { error: emailError } = await authClient.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: `${origin}/auth/callback`,
+      shouldCreateUser: true,
+    },
+  });
+  if (emailError)
+    return Response.json(
+      {
+        error: 'La invitación quedó guardada, pero el correo no pudo enviarse',
+        invitationStored: true,
+      },
+      { status: 502 },
+    );
   return Response.json(
     {
+      invitationId: data.id,
       email: data.email,
       name: body.name?.trim() || email.split('@')[0],
       role: data.role,
       status: 'invited',
+      emailSent: true,
     },
     { status: 201 },
   );
