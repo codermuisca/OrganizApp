@@ -119,6 +119,8 @@ export default function TaskBoard({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<Status | null>(null);
 
   async function switchWorkspace(workspaceId: string) {
     const response = await fetch('/api/workspaces', {
@@ -207,18 +209,17 @@ export default function TaskBoard({
       setTimeout(() => setNotice(''), 2500);
     }
   }
-  async function moveTask(task: Task) {
-    if (!isOwner && task.assignee.toLowerCase() !== user.email.toLowerCase()) {
+  function canMoveTask(task: Task) {
+    return isOwner || task.assignee.toLowerCase() === user.email.toLowerCase();
+  }
+  async function moveTaskTo(task: Task, status: Status) {
+    if (status === task.status) return;
+    if (!canMoveTask(task)) {
       setNotice('Solo puedes avanzar las tareas que tienes asignadas.');
       setTimeout(() => setNotice(''), 2500);
       return;
     }
-    const index = columnInfo.findIndex(
-      (column) => column.status === task.status,
-    );
-    const status =
-      columnInfo[Math.min(index + 1, columnInfo.length - 1)].status;
-    if (status === task.status) return;
+    const previousStatus = task.status;
     setTasks((current) =>
       current.map((item) => (item.id === task.id ? { ...item, status } : item)),
     );
@@ -229,11 +230,21 @@ export default function TaskBoard({
     });
     if (!response.ok) {
       setTasks((current) =>
-        current.map((item) => (item.id === task.id ? task : item)),
+        current.map((item) =>
+          item.id === task.id ? { ...item, status: previousStatus } : item,
+        ),
       );
       setNotice('No pudimos cambiar el estado de la tarea.');
       setTimeout(() => setNotice(''), 2500);
     }
+  }
+  async function moveTask(task: Task) {
+    const index = columnInfo.findIndex(
+      (column) => column.status === task.status,
+    );
+    const status =
+      columnInfo[Math.min(index + 1, columnInfo.length - 1)].status;
+    await moveTaskTo(task, status);
   }
   async function deleteTask() {
     if (!editingId) return;
@@ -435,7 +446,33 @@ export default function TaskBoard({
               return (
                 <section
                   key={column.status}
-                  className="min-w-0 rounded-2xl bg-muted/55 p-3"
+                  onDragOver={(event) => {
+                    const task = tasks.find((item) => item.id === draggingId);
+                    if (!task || !canMoveTask(task)) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                    setDragOverStatus(column.status);
+                  }}
+                  onDragLeave={(event) => {
+                    if (
+                      !event.currentTarget.contains(event.relatedTarget as Node)
+                    )
+                      setDragOverStatus(null);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const taskId =
+                      draggingId || event.dataTransfer.getData('text/plain');
+                    const task = tasks.find((item) => item.id === taskId);
+                    setDraggingId(null);
+                    setDragOverStatus(null);
+                    if (task) void moveTaskTo(task, column.status);
+                  }}
+                  className={`min-w-0 rounded-2xl p-3 transition-colors ${
+                    dragOverStatus === column.status
+                      ? 'bg-primary/10 ring-2 ring-primary/35'
+                      : 'bg-muted/55'
+                  }`}
                 >
                   <div className="flex items-center justify-between px-1 pb-3">
                     <div className="flex items-center gap-2">
@@ -445,9 +482,9 @@ export default function TaskBoard({
                         {items.length}
                       </span>
                     </div>
-                    {isOwner && (
+                    {isOwner && column.status === 'todo' && (
                       <button
-                        onClick={() => startCreate(column.status)}
+                        onClick={() => startCreate()}
                         className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-background"
                         aria-label={`Agregar a ${column.title}`}
                       >
@@ -467,7 +504,21 @@ export default function TaskBoard({
                       items.map((task) => (
                         <article
                           key={task.id}
-                          className="group rounded-xl border bg-card p-4 shadow-[0_1px_2px_rgba(38,31,68,.04)] transition hover:-translate-y-0.5 hover:shadow-md"
+                          draggable={canMoveTask(task)}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = 'move';
+                            event.dataTransfer.setData('text/plain', task.id);
+                            setDraggingId(task.id);
+                          }}
+                          onDragEnd={() => {
+                            setDraggingId(null);
+                            setDragOverStatus(null);
+                          }}
+                          className={`group rounded-xl border bg-card p-4 shadow-[0_1px_2px_rgba(38,31,68,.04)] transition hover:-translate-y-0.5 hover:shadow-md ${
+                            canMoveTask(task)
+                              ? 'cursor-grab active:cursor-grabbing'
+                              : ''
+                          } ${draggingId === task.id ? 'opacity-45' : ''}`}
                         >
                           <div className="flex items-start gap-3">
                             <button
@@ -538,9 +589,9 @@ export default function TaskBoard({
                         No hay tareas aquí
                       </div>
                     )}
-                    {isOwner && (
+                    {isOwner && column.status === 'todo' && (
                       <button
-                        onClick={() => startCreate(column.status)}
+                        onClick={() => startCreate()}
                         className="flex w-full items-center gap-2 rounded-xl border border-dashed px-4 py-3 text-sm text-muted-foreground hover:bg-card"
                       >
                         <Plus className="size-4" />
