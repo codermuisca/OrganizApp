@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import TaskBoard from './task-board';
 import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,10 @@ export default async function Home() {
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
   await supabase.rpc('accept_my_invitations');
-  const [{ data: profile }, { data: membership }] = await Promise.all([
+  const selectedWorkspace = (await cookies()).get(
+    'organiza_workspace_id',
+  )?.value;
+  const [{ data: profile }, { data: memberships }] = await Promise.all([
     supabase
       .from('profiles')
       .select('display_name,email')
@@ -19,19 +23,35 @@ export default async function Home() {
       .single(),
     supabase
       .from('memberships')
-      .select('role')
+      .select(
+        'workspace_id,role,workspaces!memberships_workspace_id_fkey(id,name)',
+      )
       .eq('user_id', user.id)
-      .order('created_at')
-      .limit(1)
-      .single(),
+      .order('created_at'),
   ]);
+  const spaces = (memberships ?? []).map((membership) => {
+    const workspace = membership.workspaces as unknown as {
+      id: string;
+      name: string;
+    };
+    return {
+      id: workspace.id,
+      name: workspace.name,
+      role: membership.role as 'owner' | 'member',
+    };
+  });
+  const activeSpace =
+    spaces.find((space) => space.id === selectedWorkspace) ?? spaces[0];
+  if (!activeSpace) redirect('/login');
   return (
     <TaskBoard
       user={{
         name: profile?.display_name ?? user.email?.split('@')[0] ?? 'Usuario',
         email: profile?.email ?? user.email ?? '',
-        role: membership?.role === 'owner' ? 'owner' : 'member',
+        role: activeSpace.role,
       }}
+      workspace={activeSpace}
+      workspaces={spaces}
     />
   );
 }

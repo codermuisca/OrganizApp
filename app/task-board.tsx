@@ -98,8 +98,12 @@ function initials(value: string) {
 
 export default function TaskBoard({
   user,
+  workspace,
+  workspaces,
 }: {
   user: { name: string; email: string; role: 'owner' | 'member' };
+  workspace: { id: string; name: string; role: 'owner' | 'member' };
+  workspaces: { id: string; name: string; role: 'owner' | 'member' }[];
 }) {
   const isOwner = user.role === 'owner';
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -114,6 +118,19 @@ export default function TaskBoard({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
+
+  async function switchWorkspace(workspaceId: string) {
+    const response = await fetch('/api/workspaces', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceId }),
+    });
+    if (response.ok) window.location.reload();
+    else {
+      setNotice('No pudimos cambiar de espacio.');
+      setTimeout(() => setNotice(''), 2500);
+    }
+  }
 
   async function loadTasks() {
     try {
@@ -257,7 +274,22 @@ export default function TaskBoard({
           </div>
           <div>
             <p className="font-semibold tracking-tight">Organiza</p>
-            <p className="text-xs text-muted-foreground">Mi espacio</p>
+            {workspaces.length > 1 ? (
+              <select
+                aria-label="Espacio activo"
+                value={workspace.id}
+                onChange={(event) => void switchWorkspace(event.target.value)}
+                className="mt-0.5 max-w-36 bg-transparent text-xs text-muted-foreground outline-none"
+              >
+                {workspaces.map((space) => (
+                  <option key={space.id} value={space.id}>
+                    {space.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs text-muted-foreground">{workspace.name}</p>
+            )}
           </div>
         </div>
         <nav className="mt-8 space-y-1 text-sm">

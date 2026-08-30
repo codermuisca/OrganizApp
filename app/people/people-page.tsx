@@ -36,8 +36,12 @@ function initials(value: string) {
 
 export default function PeoplePage({
   user,
+  workspace,
+  workspaces,
 }: {
   user: { id: string; name: string; email: string; role: 'owner' | 'member' };
+  workspace: { id: string; name: string; role: 'owner' | 'member' };
+  workspaces: { id: string; name: string; role: 'owner' | 'member' }[];
 }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [email, setEmail] = useState('');
@@ -46,6 +50,16 @@ export default function PeoplePage({
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const isOwner = user.role === 'owner';
+
+  async function switchWorkspace(workspaceId: string) {
+    const response = await fetch('/api/workspaces', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceId }),
+    });
+    if (response.ok) window.location.reload();
+    else setNotice('No pudimos cambiar de espacio.');
+  }
 
   async function loadMembers() {
     const response = await fetch('/api/members');
@@ -112,6 +126,24 @@ export default function PeoplePage({
             <ArrowLeft className="size-4" /> Volver al tablero
           </Link>
           <div className="flex items-center gap-3">
+            {workspaces.length > 1 ? (
+              <select
+                aria-label="Espacio activo"
+                value={workspace.id}
+                onChange={(event) => void switchWorkspace(event.target.value)}
+                className="h-9 max-w-48 rounded-lg border bg-background px-2 text-sm"
+              >
+                {workspaces.map((space) => (
+                  <option key={space.id} value={space.id}>
+                    {space.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                {workspace.name}
+              </span>
+            )}
             <span className="grid size-9 place-items-center rounded-full bg-[#efeaff] text-xs font-bold text-[#5b48d6]">
               {initials(user.name)}
             </span>
