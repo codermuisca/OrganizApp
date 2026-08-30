@@ -40,14 +40,16 @@ function present(task: Record<string, unknown>) {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const context = await workspaceContext();
   if ('error' in context) return context.error;
-  const { data, error } = await context.supabase
+  let query = context.supabase
     .from('tasks')
     .select('*,assignee:profiles!tasks_assignee_id_fkey(email,display_name)')
-    .eq('workspace_id', context.workspaceId)
-    .order('created_at');
+    .eq('workspace_id', context.workspaceId);
+  if (new URL(request.url).searchParams.get('scope') === 'mine')
+    query = query.eq('assignee_id', context.user.id);
+  const { data, error } = await query.order('created_at');
   if (error) return Response.json({ error: error.message }, { status: 400 });
   return Response.json((data ?? []).map((task) => present(task)));
 }

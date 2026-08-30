@@ -302,7 +302,7 @@ export default function TaskBoard({
           </a>
           <a
             className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground"
-            href="#"
+            href="/my-tasks"
           >
             <ListTodo className="size-4" />
             Mis tareas
