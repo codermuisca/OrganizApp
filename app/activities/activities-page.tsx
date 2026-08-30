@@ -7,7 +7,9 @@ import {
   ArrowLeft,
   BarChart3,
   Clock3,
+  Flame,
   Plus,
+  Target,
   Timer,
   Trash2,
 } from 'lucide-react';
@@ -15,7 +17,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-type Activity = { id: string; name: string; color: string };
+type GoalPeriod = 'daily' | 'weekly';
+type Activity = {
+  id: string;
+  name: string;
+  color: string;
+  goalMinutes: number | null;
+  goalPeriod: GoalPeriod | null;
+};
 type ActivityLog = {
   id: string;
   activityId: string;
@@ -54,6 +63,60 @@ function durationLabel(minutes: number) {
   return remainder ? `${hours} h ${remainder} min` : `${hours} h`;
 }
 
+function dayKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function weekStart(date: Date) {
+  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  result.setDate(result.getDate() - ((result.getDay() + 6) % 7));
+  return dayKey(result);
+}
+
+function goalProgress(activity: Activity, logs: ActivityLog[]) {
+  if (!activity.goalMinutes || !activity.goalPeriod) return 0;
+  const now = new Date();
+  return logs
+    .filter((log) => {
+      const date = new Date(log.performedAt);
+      return (
+        log.activityId === activity.id &&
+        (activity.goalPeriod === 'daily'
+          ? dayKey(date) === dayKey(now)
+          : weekStart(date) === weekStart(now))
+      );
+    })
+    .reduce((sum, log) => sum + log.durationMinutes, 0);
+}
+
+function currentStreak(activity: Activity, logs: ActivityLog[]) {
+  if (!activity.goalMinutes || !activity.goalPeriod) return 0;
+  const totals = new Map<string, number>();
+  for (const log of logs.filter((item) => item.activityId === activity.id)) {
+    const date = new Date(log.performedAt);
+    const key =
+      activity.goalPeriod === 'daily' ? dayKey(date) : weekStart(date);
+    totals.set(key, (totals.get(key) ?? 0) + log.durationMinutes);
+  }
+  const cursor = new Date();
+  if (activity.goalPeriod === 'weekly')
+    cursor.setDate(cursor.getDate() - ((cursor.getDay() + 6) % 7));
+  const keyFor = () =>
+    activity.goalPeriod === 'daily' ? dayKey(cursor) : weekStart(cursor);
+  if ((totals.get(keyFor()) ?? 0) < activity.goalMinutes)
+    cursor.setDate(
+      cursor.getDate() - (activity.goalPeriod === 'daily' ? 1 : 7),
+    );
+  let streak = 0;
+  while ((totals.get(keyFor()) ?? 0) >= activity.goalMinutes) {
+    streak += 1;
+    cursor.setDate(
+      cursor.getDate() - (activity.goalPeriod === 'daily' ? 1 : 7),
+    );
+  }
+  return streak;
+}
+
 export default function ActivitiesPage({
   user,
 }: {
@@ -61,9 +124,17 @@ export default function ActivitiesPage({
 }) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [streakLogs, setStreakLogs] = useState<ActivityLog[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [name, setName] = useState('');
   const [color, setColor] = useState(colors[0]);
+  const [goalPeriod, setGoalPeriod] = useState<'none' | GoalPeriod>('none');
+  const [goalHours, setGoalHours] = useState(0);
+  const [goalMinutes, setGoalMinutes] = useState(30);
+  const [manageId, setManageId] = useState('');
+  const [managePeriod, setManagePeriod] = useState<'none' | GoalPeriod>('none');
+  const [manageHours, setManageHours] = useState(0);
+  const [manageMinutes, setManageMinutes] = useState(30);
   const [hours, setHours] = useState(0);
   const [minutes, setMinutes] = useState(30);
   const [period, setPeriod] = useState<Period>('week');
@@ -76,6 +147,12 @@ export default function ActivitiesPage({
       const result = (await response.json()) as Activity[];
       setActivities(result);
       setSelectedId((current) => current || result[0]?.id || '');
+      setManageId((current) => current || result[0]?.id || '');
+      if (!manageId && result[0]) {
+        setManagePeriod(result[0].goalPeriod ?? 'none');
+        setManageHours(Math.floor((result[0].goalMinutes ?? 30) / 60));
+        setManageMinutes((result[0].goalMinutes ?? 30) % 60);
+      }
     } else setNotice('No pudimos cargar tus actividades.');
   }
 
@@ -88,8 +165,18 @@ export default function ActivitiesPage({
     else setNotice('No pudimos cargar tu historial.');
   }
 
+  async function loadStreakLogs() {
+    const start = new Date();
+    start.setDate(start.getDate() - 370);
+    const response = await fetch(
+      `/api/activity-logs?from=${encodeURIComponent(start.toISOString())}`,
+    );
+    if (response.ok) setStreakLogs(await response.json());
+  }
+
   useEffect(() => {
     void loadActivities();
+    void loadStreakLogs();
   }, []);
   useEffect(() => {
     void loadLogs(period);
@@ -101,13 +188,22 @@ export default function ActivitiesPage({
     const response = await fetch('/api/activities', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name, color }),
+      body: JSON.stringify({
+        name,
+        color,
+        goalPeriod: goalPeriod === 'none' ? null : goalPeriod,
+        goalMinutes:
+          goalPeriod === 'none' ? null : goalHours * 60 + goalMinutes,
+      }),
     });
     const result = (await response.json()) as Activity & { error?: string };
     if (response.ok) {
       setActivities((current) => [...current, result]);
       setSelectedId(result.id);
       setName('');
+      setGoalPeriod('none');
+      setGoalHours(0);
+      setGoalMinutes(30);
       setNotice('Actividad creada');
     } else setNotice(result.error ?? 'No pudimos crear la actividad.');
     setSaving(false);
@@ -129,10 +225,47 @@ export default function ActivitiesPage({
     const result = (await response.json()) as ActivityLog & { error?: string };
     if (response.ok) {
       setLogs((current) => [result, ...current]);
+      setStreakLogs((current) => [result, ...current]);
       setHours(0);
       setMinutes(30);
       setNotice('Actividad registrada ahora');
     } else setNotice(result.error ?? 'No pudimos guardar el registro.');
+    setSaving(false);
+  }
+
+  function selectGoalActivity(activityId: string) {
+    setManageId(activityId);
+    const activity = activities.find((item) => item.id === activityId);
+    setManagePeriod(activity?.goalPeriod ?? 'none');
+    setManageHours(Math.floor((activity?.goalMinutes ?? 30) / 60));
+    setManageMinutes((activity?.goalMinutes ?? 30) % 60);
+  }
+
+  async function updateGoal(event: React.FormEvent) {
+    event.preventDefault();
+    if (!manageId) return;
+    setSaving(true);
+    const response = await fetch('/api/activities', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: manageId,
+        goalPeriod: managePeriod === 'none' ? null : managePeriod,
+        goalMinutes:
+          managePeriod === 'none' ? null : manageHours * 60 + manageMinutes,
+      }),
+    });
+    const result = (await response.json()) as Activity & { error?: string };
+    if (response.ok) {
+      setActivities((current) =>
+        current.map((activity) =>
+          activity.id === result.id ? result : activity,
+        ),
+      );
+      setNotice(
+        managePeriod === 'none' ? 'Meta eliminada' : 'Meta actualizada',
+      );
+    } else setNotice(result.error ?? 'No pudimos actualizar la meta.');
     setSaving(false);
   }
 
@@ -143,6 +276,8 @@ export default function ActivitiesPage({
     if (response.ok)
       setLogs((current) => current.filter((log) => log.id !== id));
     else setNotice('No pudimos eliminar el registro.');
+    if (response.ok)
+      setStreakLogs((current) => current.filter((log) => log.id !== id));
   }
 
   const stats = useMemo(
@@ -277,6 +412,47 @@ export default function ActivitiesPage({
                 ))}
               </div>
             </div>
+            <div className="mt-4 grid grid-cols-[1fr_80px_80px] gap-2">
+              <label className="text-xs font-semibold">
+                Meta opcional
+                <select
+                  value={goalPeriod}
+                  onChange={(event) =>
+                    setGoalPeriod(event.target.value as 'none' | GoalPeriod)
+                  }
+                  className="mt-1 h-10 w-full rounded-lg border bg-background px-2 text-sm"
+                >
+                  <option value="none">Sin meta</option>
+                  <option value="daily">Diaria</option>
+                  <option value="weekly">Semanal</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold">
+                Horas
+                <Input
+                  type="number"
+                  min="0"
+                  value={goalHours}
+                  disabled={goalPeriod === 'none'}
+                  onChange={(event) => setGoalHours(Number(event.target.value))}
+                  className="mt-1"
+                />
+              </label>
+              <label className="text-xs font-semibold">
+                Minutos
+                <Input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={goalMinutes}
+                  disabled={goalPeriod === 'none'}
+                  onChange={(event) =>
+                    setGoalMinutes(Number(event.target.value))
+                  }
+                  className="mt-1"
+                />
+              </label>
+            </div>
             <Button
               variant="outline"
               className="mt-5 w-full"
@@ -287,6 +463,113 @@ export default function ActivitiesPage({
             </Button>
           </form>
         </div>
+        <section className="mt-8 rounded-2xl border bg-card p-5">
+          <div className="flex items-center gap-2">
+            <Target className="size-5 text-primary" />
+            <h2 className="text-lg font-semibold">Metas y rachas</h2>
+          </div>
+          <form
+            onSubmit={updateGoal}
+            className="mt-4 grid gap-3 rounded-xl bg-muted/50 p-4 md:grid-cols-[1fr_150px_90px_90px_auto] md:items-end"
+          >
+            <label className="text-xs font-semibold">
+              Actividad
+              <select
+                value={manageId}
+                onChange={(event) => selectGoalActivity(event.target.value)}
+                className="mt-1 h-10 w-full rounded-lg border bg-background px-2 text-sm"
+              >
+                <option value="">Selecciona</option>
+                {activities.map((activity) => (
+                  <option key={activity.id} value={activity.id}>
+                    {activity.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-semibold">
+              Frecuencia
+              <select
+                value={managePeriod}
+                onChange={(event) =>
+                  setManagePeriod(event.target.value as 'none' | GoalPeriod)
+                }
+                className="mt-1 h-10 w-full rounded-lg border bg-background px-2 text-sm"
+              >
+                <option value="none">Sin meta</option>
+                <option value="daily">Diaria</option>
+                <option value="weekly">Semanal</option>
+              </select>
+            </label>
+            <label className="text-xs font-semibold">
+              Horas
+              <Input
+                type="number"
+                min="0"
+                value={manageHours}
+                disabled={managePeriod === 'none'}
+                onChange={(event) => setManageHours(Number(event.target.value))}
+                className="mt-1"
+              />
+            </label>
+            <label className="text-xs font-semibold">
+              Minutos
+              <Input
+                type="number"
+                min="0"
+                max="59"
+                value={manageMinutes}
+                disabled={managePeriod === 'none'}
+                onChange={(event) =>
+                  setManageMinutes(Number(event.target.value))
+                }
+                className="mt-1"
+              />
+            </label>
+            <Button disabled={saving || !manageId}>Guardar meta</Button>
+          </form>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {activities
+              .filter((activity) => activity.goalMinutes)
+              .map((activity) => {
+                const progress = goalProgress(activity, streakLogs);
+                const percentage = Math.min(
+                  100,
+                  Math.round((progress / activity.goalMinutes!) * 100),
+                );
+                const streak = currentStreak(activity, streakLogs);
+                return (
+                  <article key={activity.id} className="rounded-xl border p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">{activity.name}</span>
+                      <span className="flex items-center gap-1 text-sm font-semibold text-[#ef783f]">
+                        <Flame className="size-4" />
+                        {streak}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {durationLabel(progress)} de{' '}
+                      {durationLabel(activity.goalMinutes!)}{' '}
+                      {activity.goalPeriod === 'daily' ? 'hoy' : 'esta semana'}
+                    </p>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${percentage}%`,
+                          backgroundColor: activity.color,
+                        }}
+                      />
+                    </div>
+                    <p className="mt-2 text-right text-xs font-medium">
+                      {percentage}% · racha de {streak}{' '}
+                      {activity.goalPeriod === 'daily' ? 'días' : 'semanas'}
+                    </p>
+                  </article>
+                );
+              })}
+          </div>
+        </section>
         <section className="mt-8 rounded-2xl border bg-card p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
