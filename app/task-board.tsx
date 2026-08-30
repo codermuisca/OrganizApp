@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Activity,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -318,6 +319,13 @@ export default function TaskBoard({
           >
             <CalendarDays className="size-4" />
             Calendario
+          </a>
+          <a
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground"
+            href="/activities"
+          >
+            <Activity className="size-4" />
+            Actividades
           </a>
           <a
             className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground"
