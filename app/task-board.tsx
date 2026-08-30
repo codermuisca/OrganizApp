@@ -309,7 +309,7 @@ export default function TaskBoard({
           </a>
           <a
             className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground"
-            href="#"
+            href="/calendar"
           >
             <CalendarDays className="size-4" />
             Calendario
