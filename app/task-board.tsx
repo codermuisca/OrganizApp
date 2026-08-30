@@ -288,9 +288,9 @@ export default function TaskBoard({
         <div className="flex items-center gap-3 px-2">
           <div className="grid size-9 place-items-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
             O
-          </div>
+          </div>  
           <div>
-            <p className="font-semibold tracking-tight">Organiza</p>
+            <p className="font-semibold tracking-tight">OrganizApp2</p>
             {workspaces.length > 1 ? (
               <select
                 aria-label="Espacio activo"
@@ -400,7 +400,7 @@ export default function TaskBoard({
                 {todayLabel()}
               </p>
               <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                Buenos días, {user.name.split(' ')[0]}
+                Hola {user.name.split(' ')[0]}!
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 Estas son las actividades que necesitan tu atención.

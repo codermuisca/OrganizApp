@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Organiza — Tu trabajo en orden',
+  title: 'OrganizApp — Tu trabajo en orden',
   description: 'Organiza, asigna y completa tus actividades en un solo lugar.',
 };
 
