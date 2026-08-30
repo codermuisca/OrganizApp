@@ -370,6 +370,7 @@ export default function ActivitiesPage({
               </label>
             </div>
             <Button
+              type="submit"
               className="mt-5 w-full"
               disabled={saving || !activities.length}
             >
@@ -454,6 +455,7 @@ export default function ActivitiesPage({
               </label>
             </div>
             <Button
+              type="submit"
               variant="outline"
               className="mt-5 w-full"
               disabled={saving || !name.trim()}
@@ -526,7 +528,9 @@ export default function ActivitiesPage({
                 className="mt-1"
               />
             </label>
-            <Button disabled={saving || !manageId}>Guardar meta</Button>
+            <Button type="submit" disabled={saving || !manageId}>
+              Guardar meta
+            </Button>
           </form>
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {activities
