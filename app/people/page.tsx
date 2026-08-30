@@ -1,10 +1,10 @@
 import { redirect } from 'next/navigation';
-import TaskBoard from './task-board';
 import { createClient } from '@/lib/supabase/server';
+import PeoplePage from './people-page';
 
 export const dynamic = 'force-dynamic';
 
-export default async function Home() {
+export default async function Page() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -26,8 +26,9 @@ export default async function Home() {
       .single(),
   ]);
   return (
-    <TaskBoard
+    <PeoplePage
       user={{
+        id: user.id,
         name: profile?.display_name ?? user.email?.split('@')[0] ?? 'Usuario',
         email: profile?.email ?? user.email ?? '',
         role: membership?.role === 'owner' ? 'owner' : 'member',

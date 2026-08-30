@@ -44,6 +44,8 @@ type Task = {
   createdAt?: string;
 };
 type Member = {
+  userId?: string;
+  invitationId?: string;
   email: string;
   name: string;
   role: 'owner' | 'member';
@@ -74,6 +76,15 @@ function prettyDate(date: string) {
   }).format(value);
 }
 
+function todayLabel() {
+  const formatted = new Intl.DateTimeFormat('es-CO', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date());
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+}
+
 function initials(value: string) {
   return (
     value
@@ -88,8 +99,9 @@ function initials(value: string) {
 export default function TaskBoard({
   user,
 }: {
-  user: { name: string; email: string };
+  user: { name: string; email: string; role: 'owner' | 'member' };
 }) {
+  const isOwner = user.role === 'owner';
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [query, setQuery] = useState('');
@@ -178,6 +190,11 @@ export default function TaskBoard({
     }
   }
   async function moveTask(task: Task) {
+    if (!isOwner && task.assignee.toLowerCase() !== user.email.toLowerCase()) {
+      setNotice('Solo puedes avanzar las tareas que tienes asignadas.');
+      setTimeout(() => setNotice(''), 2500);
+      return;
+    }
     const index = columnInfo.findIndex(
       (column) => column.status === task.status,
     );
@@ -187,11 +204,18 @@ export default function TaskBoard({
     setTasks((current) =>
       current.map((item) => (item.id === task.id ? { ...item, status } : item)),
     );
-    await fetch('/api/tasks', {
+    const response = await fetch('/api/tasks', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id: task.id, status }),
     });
+    if (!response.ok) {
+      setTasks((current) =>
+        current.map((item) => (item.id === task.id ? task : item)),
+      );
+      setNotice('No pudimos cambiar el estado de la tarea.');
+      setTimeout(() => setNotice(''), 2500);
+    }
   }
   async function deleteTask() {
     if (!editingId) return;
@@ -260,7 +284,7 @@ export default function TaskBoard({
           </a>
           <a
             className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground"
-            href="#"
+            href="/people"
           >
             <Users className="size-4" />
             Personas
@@ -304,19 +328,20 @@ export default function TaskBoard({
               />
             </div>
           </div>
-          <Button
-            onClick={() => startCreate()}
-            className="h-10 rounded-xl px-4"
-          >
-            <Plus />
-            Nueva tarea
-          </Button>
+          {isOwner && (
+            <Button
+              onClick={() => startCreate()}
+              className="h-10 rounded-xl px-4"
+            >
+              <Plus /> Nueva tarea
+            </Button>
+          )}
         </header>
         <div className="px-4 py-6 sm:px-7 sm:py-8">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="mb-1 text-sm font-medium text-primary">
-                Viernes, 28 de agosto
+                {todayLabel()}
               </p>
               <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
                 Buenos días, {user.name.split(' ')[0]}
@@ -341,14 +366,15 @@ export default function TaskBoard({
                 {members.length === 1 ? 'persona' : 'personas'}
               </p>
             </div>
-            <Button
-              onClick={() => setInviteOpen(true)}
-              variant="outline"
-              className="rounded-xl"
-            >
-              <Users />
-              Invitar
-            </Button>
+            {isOwner && (
+              <Button
+                onClick={() => setInviteOpen(true)}
+                variant="outline"
+                className="rounded-xl"
+              >
+                <Users /> Invitar
+              </Button>
+            )}
           </div>
           {notice && (
             <output className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full bg-foreground px-4 py-2 text-sm text-background shadow-xl">
@@ -374,13 +400,15 @@ export default function TaskBoard({
                         {items.length}
                       </span>
                     </div>
-                    <button
-                      onClick={() => startCreate(column.status)}
-                      className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-background"
-                      aria-label={`Agregar a ${column.title}`}
-                    >
-                      <Plus className="size-4" />
-                    </button>
+                    {isOwner && (
+                      <button
+                        onClick={() => startCreate(column.status)}
+                        className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-background"
+                        aria-label={`Agregar a ${column.title}`}
+                      >
+                        <Plus className="size-4" />
+                      </button>
+                    )}
                   </div>
                   <div className="space-y-3">
                     {loading &&
@@ -408,7 +436,7 @@ export default function TaskBoard({
                               )}
                             </button>
                             <button
-                              onClick={() => startEdit(task)}
+                              onClick={() => isOwner && startEdit(task)}
                               className="min-w-0 flex-1 text-left"
                             >
                               <h4 className="text-sm font-semibold leading-snug">
@@ -420,13 +448,15 @@ export default function TaskBoard({
                                 </p>
                               )}
                             </button>
-                            <button
-                              onClick={() => startEdit(task)}
-                              className="opacity-40 transition group-hover:opacity-100"
-                              aria-label="Editar"
-                            >
-                              <MoreHorizontal className="size-4" />
-                            </button>
+                            {isOwner && (
+                              <button
+                                onClick={() => startEdit(task)}
+                                className="opacity-40 transition group-hover:opacity-100"
+                                aria-label="Editar"
+                              >
+                                <MoreHorizontal className="size-4" />
+                              </button>
+                            )}
                           </div>
                           <div className="mt-4 flex items-center justify-between">
                             <Badge
@@ -463,13 +493,15 @@ export default function TaskBoard({
                         No hay tareas aquí
                       </div>
                     )}
-                    <button
-                      onClick={() => startCreate(column.status)}
-                      className="flex w-full items-center gap-2 rounded-xl border border-dashed px-4 py-3 text-sm text-muted-foreground hover:bg-card"
-                    >
-                      <Plus className="size-4" />
-                      Agregar tarea
-                    </button>
+                    {isOwner && (
+                      <button
+                        onClick={() => startCreate(column.status)}
+                        className="flex w-full items-center gap-2 rounded-xl border border-dashed px-4 py-3 text-sm text-muted-foreground hover:bg-card"
+                      >
+                        <Plus className="size-4" />
+                        Agregar tarea
+                      </button>
+                    )}
                   </div>
                 </section>
               );
