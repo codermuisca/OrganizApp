@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Activity as ActivityIcon,
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Flame,
   Plus,
@@ -34,6 +36,7 @@ type ActivityLog = {
   color: string;
   durationMinutes: number;
   performedAt: string;
+  note?: string | null;
 };
 
 type Period = 'week' | 'month' | 'year';
@@ -44,7 +47,7 @@ type Space = {
   role: 'owner' | 'member';
 };
 
-const colors = [
+const defaultColors = [
   '#7c6cff',
   '#35b78a',
   '#f2a93b',
@@ -53,37 +56,53 @@ const colors = [
   '#b25ec7',
 ];
 
-function range(period: Period) {
-  const now = new Date();
+function range(
+  period: Period,
+  referenceDate: Date,
+) {
   let start: Date;
+  let end: Date;
 
   if (period === 'week') {
-    const offset = (now.getDay() + 6) % 7;
+    const offset =
+      (referenceDate.getDay() + 6) % 7;
 
     start = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate() - offset,
+      referenceDate.getFullYear(),
+      referenceDate.getMonth(),
+      referenceDate.getDate() - offset,
+    );
+
+    end = new Date(
+      start.getFullYear(),
+      start.getMonth(),
+      start.getDate() + 7,
     );
   } else if (period === 'month') {
     start = new Date(
-      now.getFullYear(),
-      now.getMonth(),
+      referenceDate.getFullYear(),
+      referenceDate.getMonth(),
+      1,
+    );
+
+    end = new Date(
+      referenceDate.getFullYear(),
+      referenceDate.getMonth() + 1,
       1,
     );
   } else {
     start = new Date(
-      now.getFullYear(),
+      referenceDate.getFullYear(),
+      0,
+      1,
+    );
+
+    end = new Date(
+      referenceDate.getFullYear() + 1,
       0,
       1,
     );
   }
-
-  const end = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + 1,
-  );
 
   return {
     from: start.toISOString(),
@@ -95,7 +114,9 @@ function durationLabel(minutes: number) {
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
 
-  if (!hours) return `${remainder} min`;
+  if (!hours) {
+    return `${remainder} min`;
+  }
 
   return remainder
     ? `${hours} h ${remainder} min`
@@ -251,6 +272,7 @@ export default function ActivitiesPage({
     name: string;
     email: string;
   };
+
   workspace: Space;
   workspaces: Space[];
 }) {
@@ -260,31 +282,45 @@ export default function ActivitiesPage({
   const [logs, setLogs] =
     useState<ActivityLog[]>([]);
 
-  const [streakLogs, setStreakLogs] =
-    useState<ActivityLog[]>([]);
+  const [
+    streakLogs,
+    setStreakLogs,
+  ] = useState<ActivityLog[]>([]);
 
-  const [selectedId, setSelectedId] =
-    useState('');
+  const [
+    selectedId,
+    setSelectedId,
+  ] = useState('');
 
   const [name, setName] =
     useState('');
-
+  
+  const [colors, setColors] = useState(defaultColors);
+  const [customColor, setCustomColor] = useState('#000000');
   const [color, setColor] =
-    useState(colors[0]);
+  useState(defaultColors[0]);
 
-  const [goalPeriod, setGoalPeriod] =
-    useState<
-      'none' | GoalPeriod
-    >('none');
+  const [
+    goalPeriod,
+    setGoalPeriod,
+  ] = useState<
+    'none' | GoalPeriod
+  >('none');
 
-  const [goalHours, setGoalHours] =
-    useState(0);
+  const [
+    goalHours,
+    setGoalHours,
+  ] = useState(0);
 
-  const [goalMinutes, setGoalMinutes] =
-    useState(30);
+  const [
+    goalMinutes,
+    setGoalMinutes,
+  ] = useState(0);
 
-  const [manageId, setManageId] =
-    useState('');
+  const [
+    manageId,
+    setManageId,
+  ] = useState('');
 
   const [
     managePeriod,
@@ -301,16 +337,24 @@ export default function ActivitiesPage({
   const [
     manageMinutes,
     setManageMinutes,
-  ] = useState(30);
+  ] = useState(0);
 
   const [hours, setHours] =
     useState(0);
 
   const [minutes, setMinutes] =
-    useState(30);
+    useState(0);
+
+  const [note, setNote] =
+    useState('');
 
   const [period, setPeriod] =
     useState<Period>('week');
+
+  const [
+    periodDate,
+    setPeriodDate,
+  ] = useState(() => new Date());
 
   const [notice, setNotice] =
     useState('');
@@ -353,14 +397,14 @@ export default function ActivitiesPage({
           Math.floor(
             (result[0]
               .goalMinutes ??
-              30) / 60,
+              0) / 60,
           ),
         );
 
         setManageMinutes(
           (result[0]
             .goalMinutes ??
-            30) % 60,
+            0) % 60,
         );
       }
     } else {
@@ -372,9 +416,12 @@ export default function ActivitiesPage({
 
   async function loadLogs(
     selectedPeriod: Period,
+    selectedDate: Date,
   ) {
-    const { from, to } =
-      range(selectedPeriod);
+    const { from, to } = range(
+      selectedPeriod,
+      selectedDate,
+    );
 
     const response = await fetch(
       `/api/activity-logs?from=${encodeURIComponent(
@@ -419,8 +466,11 @@ export default function ActivitiesPage({
   }, []);
 
   useEffect(() => {
-    void loadLogs(period);
-  }, [period]);
+    void loadLogs(
+      period,
+      periodDate,
+    );
+  }, [period, periodDate]);
 
   async function createActivity(
     event: React.FormEvent,
@@ -468,7 +518,7 @@ export default function ActivitiesPage({
       setName('');
       setGoalPeriod('none');
       setGoalHours(0);
-      setGoalMinutes(30);
+      setGoalMinutes(0);
 
       setNotice(
         'Actividad creada',
@@ -515,6 +565,8 @@ export default function ActivitiesPage({
         body: JSON.stringify({
           activityId: selectedId,
           durationMinutes,
+          note:
+            note.trim() || null,
         }),
       },
     );
@@ -525,18 +577,50 @@ export default function ActivitiesPage({
       };
 
     if (response.ok) {
-      setLogs((current) => [
-        result,
-        ...current,
-      ]);
+      /*
+       * Solo agregamos directamente el registro
+       * a "logs" si pertenece al período que
+       * estamos viendo actualmente.
+       */
+      const {
+        from,
+        to,
+      } = range(
+        period,
+        periodDate,
+      );
 
-      setStreakLogs((current) => [
-        result,
-        ...current,
-      ]);
+      const logTime =
+        new Date(
+          result.performedAt,
+        ).getTime();
+
+      const fromTime =
+        new Date(from).getTime();
+
+      const toTime =
+        new Date(to).getTime();
+
+      if (
+        logTime >= fromTime &&
+        logTime < toTime
+      ) {
+        setLogs((current) => [
+          result,
+          ...current,
+        ]);
+      }
+
+      setStreakLogs(
+        (current) => [
+          result,
+          ...current,
+        ],
+      );
 
       setHours(0);
-      setMinutes(30);
+      setMinutes(0);
+      setNote('');
 
       setNotice(
         'Actividad registrada ahora',
@@ -570,13 +654,13 @@ export default function ActivitiesPage({
     setManageHours(
       Math.floor(
         (activity?.goalMinutes ??
-          30) / 60,
+          0) / 60,
       ),
     );
 
     setManageMinutes(
       (activity?.goalMinutes ??
-        30) % 60,
+        0) % 60,
     );
   }
 
@@ -618,13 +702,15 @@ export default function ActivitiesPage({
       };
 
     if (response.ok) {
-      setActivities((current) =>
-        current.map(
-          (activity) =>
-            activity.id === result.id
-              ? result
-              : activity,
-        ),
+      setActivities(
+        (current) =>
+          current.map(
+            (activity) =>
+              activity.id ===
+              result.id
+                ? result
+                : activity,
+          ),
       );
 
       setNotice(
@@ -655,14 +741,17 @@ export default function ActivitiesPage({
     if (response.ok) {
       setLogs((current) =>
         current.filter(
-          (log) => log.id !== id,
+          (log) =>
+            log.id !== id,
         ),
       );
 
-      setStreakLogs((current) =>
-        current.filter(
-          (log) => log.id !== id,
-        ),
+      setStreakLogs(
+        (current) =>
+          current.filter(
+            (log) =>
+              log.id !== id,
+          ),
       );
     } else {
       setNotice(
@@ -671,11 +760,146 @@ export default function ActivitiesPage({
     }
   }
 
+  function changePeriod(
+    direction: -1 | 1,
+  ) {
+    setPeriodDate(
+      (current) => {
+        const next =
+          new Date(current);
+
+        if (
+          period === 'week'
+        ) {
+          next.setDate(
+            next.getDate() +
+              direction * 7,
+          );
+        } else if (
+          period === 'month'
+        ) {
+          next.setMonth(
+            next.getMonth() +
+              direction,
+          );
+        } else {
+          next.setFullYear(
+            next.getFullYear() +
+              direction,
+          );
+        }
+
+        return next;
+      },
+    );
+  }
+
+  function periodLabel() {
+    if (period === 'year') {
+      return String(
+        periodDate.getFullYear(),
+      );
+    }
+
+    if (period === 'month') {
+      return new Intl.DateTimeFormat(
+        'es-CO',
+        {
+          month: 'long',
+          year: 'numeric',
+        },
+      ).format(periodDate);
+    }
+
+    const offset =
+      (periodDate.getDay() + 6) %
+      7;
+
+    const start = new Date(
+      periodDate.getFullYear(),
+      periodDate.getMonth(),
+      periodDate.getDate() -
+        offset,
+    );
+
+    const end = new Date(
+      start.getFullYear(),
+      start.getMonth(),
+      start.getDate() + 6,
+    );
+
+    const sameYear =
+      start.getFullYear() ===
+      end.getFullYear();
+
+    const sameMonth =
+      sameYear &&
+      start.getMonth() ===
+        end.getMonth();
+
+    if (sameMonth) {
+      const month =
+        new Intl.DateTimeFormat(
+          'es-CO',
+          {
+            month: 'short',
+          },
+        ).format(start);
+
+      return `${start.getDate()}–${end.getDate()} ${month} ${end.getFullYear()}`;
+    }
+
+    if (sameYear) {
+      const startText =
+        new Intl.DateTimeFormat(
+          'es-CO',
+          {
+            day: 'numeric',
+            month: 'short',
+          },
+        ).format(start);
+
+      const endText =
+        new Intl.DateTimeFormat(
+          'es-CO',
+          {
+            day: 'numeric',
+            month: 'short',
+          },
+        ).format(end);
+
+      return `${startText}–${endText} ${end.getFullYear()}`;
+    }
+
+    const startText =
+      new Intl.DateTimeFormat(
+        'es-CO',
+        {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        },
+      ).format(start);
+
+    const endText =
+      new Intl.DateTimeFormat(
+        'es-CO',
+        {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        },
+      ).format(end);
+
+    return `${startText}–${endText}`;
+  }
+
   const stats = useMemo(
     () =>
       activities
         .map((activity) => ({
           ...activity,
+
           minutes: logs
             .filter(
               (log) =>
@@ -695,7 +919,8 @@ export default function ActivitiesPage({
         )
         .sort(
           (a, b) =>
-            b.minutes - a.minutes,
+            b.minutes -
+            a.minutes,
         ),
     [activities, logs],
   );
@@ -729,9 +954,7 @@ export default function ActivitiesPage({
             </h1>
 
             <p className="mt-2 text-sm text-muted-foreground">
-              Registra lo que haces y
-              descubre cómo inviertes tu
-              tiempo.
+              Registra lo que haces y descubre cómo inviertes tu tiempo.
             </p>
           </div>
 
@@ -754,8 +977,7 @@ export default function ActivitiesPage({
               </h2>
 
               <p className="mt-1 text-xs text-muted-foreground">
-                La fecha y hora se guardan
-                automáticamente.
+                La fecha y hora se guardan automáticamente.
               </p>
 
               <label className="mt-5 block text-xs font-semibold">
@@ -764,9 +986,12 @@ export default function ActivitiesPage({
                 <select
                   required
                   value={selectedId}
-                  onChange={(event) =>
+                  onChange={(
+                    event,
+                  ) =>
                     setSelectedId(
-                      event.target.value,
+                      event.target
+                        .value,
                     )
                   }
                   className="mt-1 h-10 w-full rounded-lg border bg-background px-2 text-sm"
@@ -778,10 +1003,16 @@ export default function ActivitiesPage({
                   {activities.map(
                     (activity) => (
                       <option
-                        key={activity.id}
-                        value={activity.id}
+                        key={
+                          activity.id
+                        }
+                        value={
+                          activity.id
+                        }
                       >
-                        {activity.name}
+                        {
+                          activity.name
+                        }
                       </option>
                     ),
                   )}
@@ -797,7 +1028,14 @@ export default function ActivitiesPage({
                     min="0"
                     max="24"
                     value={hours}
-                    onChange={(event) =>
+                    onFocus={(
+                      event,
+                    ) =>
+                      event.target.select()
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setHours(
                         Number(
                           event.target
@@ -817,7 +1055,14 @@ export default function ActivitiesPage({
                     min="0"
                     max="59"
                     value={minutes}
-                    onChange={(event) =>
+                    onFocus={(
+                      event,
+                    ) =>
+                      event.target.select()
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setMinutes(
                         Number(
                           event.target
@@ -830,9 +1075,33 @@ export default function ActivitiesPage({
                 </label>
               </div>
 
+              <label className="mt-4 block text-xs font-semibold">
+                Nota
+
+                <textarea
+                  value={note}
+                  onChange={(
+                    event,
+                  ) =>
+                    setNote(
+                      event.target
+                        .value,
+                    )
+                  }
+                  maxLength={500}
+                  rows={3}
+                  placeholder="Deja tu nota..."
+                  className="mt-1 w-full resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+
+                <span className="mt-1 block text-right text-[10px] font-normal text-muted-foreground">
+                  {note.length}/500
+                </span>
+              </label>
+
               <Button
                 type="submit"
-                className="mt-5 w-full"
+                className="mt-4 w-full"
                 disabled={
                   saving ||
                   !activities.length
@@ -848,7 +1117,9 @@ export default function ActivitiesPage({
 
             {/* Nueva actividad */}
             <form
-              onSubmit={createActivity}
+              onSubmit={
+                createActivity
+              }
               className="rounded-2xl border bg-card p-5"
             >
               <Plus className="size-6 text-primary" />
@@ -858,8 +1129,7 @@ export default function ActivitiesPage({
               </h2>
 
               <p className="mt-1 text-xs text-muted-foreground">
-                Créala una vez y reutilízala
-                todos los días.
+                Créala una vez y reutilízala todos los días.
               </p>
 
               <label className="mt-5 block text-xs font-semibold">
@@ -869,9 +1139,12 @@ export default function ActivitiesPage({
                   required
                   maxLength={60}
                   value={name}
-                  onChange={(event) =>
+                  onChange={(
+                    event,
+                  ) =>
                     setName(
-                      event.target.value,
+                      event.target
+                        .value,
                     )
                   }
                   className="mt-1"
@@ -879,43 +1152,88 @@ export default function ActivitiesPage({
                 />
               </label>
 
-              <div className="mt-4">
-                <p className="text-xs font-semibold">
-                  Color
-                </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+  {colors.map((option) => {
+    const isDefault = defaultColors.includes(option);
 
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {colors.map(
-                    (option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        aria-label={`Color ${option}`}
-                        onClick={() =>
-                          setColor(option)
-                        }
-                        className={`size-8 rounded-full ${
-                          color === option
-                            ? 'ring-2 ring-primary ring-offset-2'
-                            : ''
-                        }`}
-                        style={{
-                          backgroundColor:
-                            option,
-                        }}
-                      />
-                    ),
-                  )}
-                </div>
-              </div>
+    return (
+      <div
+        key={option}
+        className="relative"
+      >
+        <button
+          type="button"
+          aria-label={`Color ${option}`}
+          onClick={() => setColor(option)}
+          className={`size-8 rounded-full ${
+            color === option
+              ? 'ring-2 ring-primary ring-offset-2'
+              : ''
+          }`}
+          style={{
+            backgroundColor: option,
+          }}
+        />
+
+        {!isDefault && (
+          <button
+            type="button"
+            aria-label={`Eliminar color ${option}`}
+            onClick={() => {
+              setColors((current) =>
+                current.filter(
+                  (item) => item !== option,
+                ),
+              );
+
+              if (color === option) {
+                setColor(defaultColors[0]);
+              }
+            }}
+            className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground"
+          >
+            ×
+          </button>
+        )}
+      </div>
+    );
+  })}
+
+  <label className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted">
+    + Agregar color
+
+    <input
+      type="color"
+      value={customColor}
+      onChange={(event) => {
+        const newColor =
+          event.target.value;
+
+        setCustomColor(newColor);
+        setColor(newColor);
+
+        setColors((current) =>
+          current.includes(newColor)
+            ? current
+            : [...current, newColor],
+        );
+      }}
+      className="h-6 w-6 cursor-pointer border-0 bg-transparent p-0"
+    />
+  </label>
+</div>
 
               <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_80px_80px]">
                 <label className="text-xs font-semibold">
                   Meta opcional
 
                   <select
-                    value={goalPeriod}
-                    onChange={(event) =>
+                    value={
+                      goalPeriod
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setGoalPeriod(
                         event.target
                           .value as
@@ -945,12 +1263,21 @@ export default function ActivitiesPage({
                   <Input
                     type="number"
                     min="0"
-                    value={goalHours}
+                    value={
+                      goalHours
+                    }
                     disabled={
                       goalPeriod ===
                       'none'
                     }
-                    onChange={(event) =>
+                    onFocus={(
+                      event,
+                    ) =>
+                      event.target.select()
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setGoalHours(
                         Number(
                           event.target
@@ -969,12 +1296,21 @@ export default function ActivitiesPage({
                     type="number"
                     min="0"
                     max="59"
-                    value={goalMinutes}
+                    value={
+                      goalMinutes
+                    }
                     disabled={
                       goalPeriod ===
                       'none'
                     }
-                    onChange={(event) =>
+                    onFocus={(
+                      event,
+                    ) =>
+                      event.target.select()
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       setGoalMinutes(
                         Number(
                           event.target
@@ -1021,9 +1357,12 @@ export default function ActivitiesPage({
 
                 <select
                   value={manageId}
-                  onChange={(event) =>
+                  onChange={(
+                    event,
+                  ) =>
                     selectGoalActivity(
-                      event.target.value,
+                      event.target
+                        .value,
                     )
                   }
                   className="mt-1 h-10 w-full rounded-lg border bg-background px-2 text-sm"
@@ -1035,10 +1374,16 @@ export default function ActivitiesPage({
                   {activities.map(
                     (activity) => (
                       <option
-                        key={activity.id}
-                        value={activity.id}
+                        key={
+                          activity.id
+                        }
+                        value={
+                          activity.id
+                        }
                       >
-                        {activity.name}
+                        {
+                          activity.name
+                        }
                       </option>
                     ),
                   )}
@@ -1049,8 +1394,12 @@ export default function ActivitiesPage({
                 Frecuencia
 
                 <select
-                  value={managePeriod}
-                  onChange={(event) =>
+                  value={
+                    managePeriod
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setManagePeriod(
                       event.target
                         .value as
@@ -1080,15 +1429,25 @@ export default function ActivitiesPage({
                 <Input
                   type="number"
                   min="0"
-                  value={manageHours}
+                  value={
+                    manageHours
+                  }
                   disabled={
                     managePeriod ===
                     'none'
                   }
-                  onChange={(event) =>
+                  onFocus={(
+                    event,
+                  ) =>
+                    event.target.select()
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setManageHours(
                       Number(
-                        event.target.value,
+                        event.target
+                          .value,
                       ),
                     )
                   }
@@ -1103,15 +1462,25 @@ export default function ActivitiesPage({
                   type="number"
                   min="0"
                   max="59"
-                  value={manageMinutes}
+                  value={
+                    manageMinutes
+                  }
                   disabled={
                     managePeriod ===
                     'none'
                   }
-                  onChange={(event) =>
+                  onFocus={(
+                    event,
+                  ) =>
+                    event.target.select()
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setManageMinutes(
                       Number(
-                        event.target.value,
+                        event.target
+                          .value,
                       ),
                     )
                   }
@@ -1136,89 +1505,98 @@ export default function ActivitiesPage({
                   (activity) =>
                     activity.goalMinutes,
                 )
-                .map((activity) => {
-                  const progress =
-                    goalProgress(
-                      activity,
-                      streakLogs,
-                    );
+                .map(
+                  (activity) => {
+                    const progress =
+                      goalProgress(
+                        activity,
+                        streakLogs,
+                      );
 
-                  const percentage =
-                    Math.min(
-                      100,
-                      Math.round(
-                        (progress /
-                          activity.goalMinutes!) *
-                          100,
-                      ),
-                    );
+                    const percentage =
+                      Math.min(
+                        100,
+                        Math.round(
+                          (progress /
+                            activity.goalMinutes!) *
+                            100,
+                        ),
+                      );
 
-                  const streak =
-                    currentStreak(
-                      activity,
-                      streakLogs,
-                    );
+                    const streak =
+                      currentStreak(
+                        activity,
+                        streakLogs,
+                      );
 
-                  return (
-                    <article
-                      key={activity.id}
-                      className="rounded-xl border p-4"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold">
+                    return (
+                      <article
+                        key={
+                          activity.id
+                        }
+                        className="rounded-xl border p-4"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold">
+                            {
+                              activity.name
+                            }
+                          </span>
+
+                          <span className="flex items-center gap-1 text-sm font-semibold text-[#ef783f]">
+                            <Flame className="size-4" />
+                            {
+                              streak
+                            }
+                          </span>
+                        </div>
+
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {durationLabel(
+                            progress,
+                          )}{' '}
+                          de{' '}
+                          {durationLabel(
+                            activity.goalMinutes!,
+                          )}{' '}
+                          {activity.goalPeriod ===
+                          'daily'
+                            ? 'hoy'
+                            : 'esta semana'}
+                        </p>
+
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${percentage}%`,
+                              backgroundColor:
+                                activity.color,
+                            }}
+                          />
+                        </div>
+
+                        <p className="mt-2 text-right text-xs font-medium">
                           {
-                            activity.name
+                            percentage
                           }
-                        </span>
-
-                        <span className="flex items-center gap-1 text-sm font-semibold text-[#ef783f]">
-                          <Flame className="size-4" />
-                          {streak}
-                        </span>
-                      </div>
-
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {durationLabel(
-                          progress,
-                        )}{' '}
-                        de{' '}
-                        {durationLabel(
-                          activity.goalMinutes!,
-                        )}{' '}
-                        {activity.goalPeriod ===
-                        'daily'
-                          ? 'hoy'
-                          : 'esta semana'}
-                      </p>
-
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${percentage}%`,
-                            backgroundColor:
-                              activity.color,
-                          }}
-                        />
-                      </div>
-
-                      <p className="mt-2 text-right text-xs font-medium">
-                        {percentage}% ·
-                        racha de {streak}{' '}
-                        {activity.goalPeriod ===
-                        'daily'
-                          ? 'días'
-                          : 'semanas'}
-                      </p>
-                    </article>
-                  );
-                })}
+                          % · racha de{' '}
+                          {streak}{' '}
+                          {activity.goalPeriod ===
+                          'daily'
+                            ? 'días'
+                            : 'semanas'}
+                        </p>
+                      </article>
+                    );
+                  },
+                )}
             </div>
           </section>
 
           {/* Resumen */}
           <section className="mt-8 rounded-2xl border bg-card p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="flex items-center gap-2 font-semibold">
                   <BarChart3 className="size-5 text-primary" />
@@ -1229,39 +1607,86 @@ export default function ActivitiesPage({
                   {durationLabel(
                     total,
                   )}{' '}
-                  registrados en el
-                  período.
+                  registrados en el período.
                 </p>
               </div>
 
-              <div className="flex rounded-xl bg-muted p-1">
-                {(
-                  [
-                    'week',
-                    'month',
-                    'year',
-                  ] as Period[]
-                ).map((item) => (
-                  <button
-                    key={item}
+              <div className="flex flex-col items-end gap-3">
+                {/* Semana / Mes / Año */}
+                <div className="flex rounded-xl bg-muted p-1">
+                  {(
+                    [
+                      'week',
+                      'month',
+                      'year',
+                    ] as Period[]
+                  ).map(
+                    (item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => {
+                          setPeriod(
+                            item,
+                          );
+
+                          setPeriodDate(
+                            new Date(),
+                          );
+                        }}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                          period ===
+                          item
+                            ? 'bg-background shadow-sm'
+                            : 'text-muted-foreground'
+                        }`}
+                      >
+                        {item ===
+                        'week'
+                          ? 'Semana'
+                          : item ===
+                              'month'
+                            ? 'Mes'
+                            : 'Año'}
+                      </button>
+                    ),
+                  )}
+                </div>
+
+                {/* Navegación del período */}
+                <div className="flex items-center gap-2">
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="icon"
                     onClick={() =>
-                      setPeriod(item)
+                      changePeriod(
+                        -1,
+                      )
                     }
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                      period === item
-                        ? 'bg-background shadow-sm'
-                        : 'text-muted-foreground'
-                    }`}
+                    aria-label="Período anterior"
                   >
-                    {item === 'week'
-                      ? 'Semana'
-                      : item ===
-                          'month'
-                        ? 'Mes'
-                        : 'Año'}
-                  </button>
-                ))}
+                    <ChevronLeft className="size-4" />
+                  </Button>
+
+                  <div className="min-w-40 text-center text-sm font-semibold capitalize">
+                    {periodLabel()}
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() =>
+                      changePeriod(
+                        1,
+                      )
+                    }
+                    aria-label="Período siguiente"
+                  >
+                    <ChevronRight className="size-4" />
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -1303,8 +1728,8 @@ export default function ActivitiesPage({
                 )
               ) : (
                 <p className="py-8 text-center text-sm text-muted-foreground">
-                  Aún no hay registros en
-                  este período.
+                  No hay registros en{' '}
+                  {periodLabel()}.
                 </p>
               )}
             </div>
@@ -1312,76 +1737,109 @@ export default function ActivitiesPage({
 
           {/* Historial */}
           <section className="mt-8">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">
-                Historial reciente
-              </h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Historial
+                </h2>
+
+                <p className="mt-1 text-xs capitalize text-muted-foreground">
+                  {periodLabel()}
+                </p>
+              </div>
 
               <Badge variant="outline">
-                {logs.length} registros
+                {logs.length}{' '}
+                {logs.length === 1
+                  ? 'registro'
+                  : 'registros'}
               </Badge>
             </div>
 
             <div className="mt-3 space-y-3">
-              {logs
-                .slice(0, 50)
-                .map((log) => (
-                  <article
-                    key={log.id}
-                    className="flex items-center gap-3 rounded-2xl border bg-card p-4 sm:gap-4"
-                  >
-                    <span
-                      className="size-3 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor:
-                          log.color,
-                      }}
-                    />
-
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">
-                        {
-                          log.activityName
+              {logs.length ? (
+                logs
+                  .slice(0, 50)
+                  .map(
+                    (log) => (
+                      <article
+                        key={
+                          log.id
                         }
-                      </p>
+                        className="flex items-start gap-3 rounded-2xl border bg-card p-4 sm:gap-4"
+                      >
+                        <span
+                          className="mt-1 size-3 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor:
+                              log.color,
+                          }}
+                        />
 
-                      <p className="text-xs text-muted-foreground">
-                        {new Intl.DateTimeFormat(
-                          'es-CO',
-                          {
-                            dateStyle:
-                              'medium',
-                            timeStyle:
-                              'short',
-                          },
-                        ).format(
-                          new Date(
-                            log.performedAt,
-                          ),
-                        )}
-                      </p>
-                    </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold">
+                            {
+                              log.activityName
+                            }
+                          </p>
 
-                    <strong className="shrink-0 text-sm">
-                      {durationLabel(
-                        log.durationMinutes,
-                      )}
-                    </strong>
+                          <p className="text-xs text-muted-foreground">
+                            {new Intl.DateTimeFormat(
+                              'es-CO',
+                              {
+                                dateStyle:
+                                  'medium',
+                                timeStyle:
+                                  'short',
+                              },
+                            ).format(
+                              new Date(
+                                log.performedAt,
+                              ),
+                            )}
+                          </p>
 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Eliminar registro de ${log.activityName}`}
-                      onClick={() =>
-                        void deleteLog(
-                          log.id,
-                        )
-                      }
-                    >
-                      <Trash2 className="size-4 text-destructive" />
-                    </Button>
-                  </article>
-                ))}
+                          {log.note && (
+                            <p className="mt-2 whitespace-pre-wrap text-sm text-foreground/80">
+                              {
+                                log.note
+                              }
+                            </p>
+                          )}
+                        </div>
+
+                        <strong className="shrink-0 text-sm">
+                          {durationLabel(
+                            log.durationMinutes,
+                          )}
+                        </strong>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Eliminar registro de ${log.activityName}`}
+                          onClick={() =>
+                            void deleteLog(
+                              log.id,
+                            )
+                          }
+                        >
+                          <Trash2 className="size-4 text-destructive" />
+                        </Button>
+                      </article>
+                    ),
+                  )
+              ) : (
+                <div className="rounded-2xl border border-dashed bg-card p-8 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    No hay registros en{' '}
+                    <span className="font-medium capitalize">
+                      {periodLabel()}
+                    </span>
+                    .
+                  </p>
+                </div>
+              )}
             </div>
           </section>
         </div>
