@@ -2,24 +2,18 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Activity,
-  CalendarDays,
   Check,
   CheckCircle2,
   ChevronRight,
   Circle,
-  LayoutDashboard,
-  ListTodo,
-  Menu,
   MoreHorizontal,
   Plus,
   Search,
-  Settings2,
   Trash2,
   Users,
-  X,
 } from 'lucide-react';
 
+import AppSidebar from '@/components/app-sidebar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -34,7 +28,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-
 type Status = 'todo' | 'progress' | 'done';
 type Priority = 'low' | 'medium' | 'high';
 
@@ -172,32 +165,6 @@ export default function TaskBoard({
   const [dragOverStatus, setDragOverStatus] =
     useState<Status | null>(null);
 
-  // Menú móvil
-  const [mobileMenuOpen, setMobileMenuOpen] =
-    useState(false);
-
-  async function switchWorkspace(workspaceId: string) {
-    const response = await fetch('/api/workspaces', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        workspaceId,
-      }),
-    });
-
-    if (response.ok) {
-      window.location.reload();
-    } else {
-      setNotice('No pudimos cambiar de espacio.');
-
-      setTimeout(() => {
-        setNotice('');
-      }, 2500);
-    }
-  }
-
   async function loadTasks() {
     try {
       const [taskResponse, memberResponse] =
@@ -236,20 +203,6 @@ export default function TaskBoard({
   useEffect(() => {
     void loadTasks();
   }, []);
-
-  // Evita que el fondo haga scroll cuando el menú móvil está abierto
-  useEffect(() => {
-    if (!mobileMenuOpen) {
-      document.body.style.overflow = '';
-      return;
-    }
-
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [mobileMenuOpen]);
 
   const filtered = useMemo(
     () =>
@@ -544,202 +497,28 @@ export default function TaskBoard({
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      {/* Fondo oscuro del menú móvil */}
-      {mobileMenuOpen && (
-        <button
-          type="button"
-          aria-label="Cerrar menú"
-          className="fixed inset-0 z-30 bg-black/30 backdrop-blur-[1px] lg:hidden"
-          onClick={() =>
-            setMobileMenuOpen(false)
-          }
-        />
-      )}
-
-      {/* SIDEBAR */}
-      <aside
-        className={`
-          fixed inset-y-0 left-0 z-40
-          flex w-60 flex-col
-          border-r bg-sidebar px-4 py-5
-          transition-transform duration-300 ease-in-out
-          lg:z-20 lg:translate-x-0
-          ${
-            mobileMenuOpen
-              ? 'translate-x-0'
-              : '-translate-x-full'
-          }
-        `}
+      <AppSidebar
+        user={{
+          name: user.name,
+          email: user.email,
+        }}
+        workspace={workspace}
+        workspaces={workspaces}
+        activePage="dashboard"
       >
-        {/* Botón cerrar móvil */}
-        <button
-          type="button"
-          onClick={() =>
-            setMobileMenuOpen(false)
-          }
-          className="absolute right-3 top-3 grid size-9 place-items-center rounded-lg text-muted-foreground transition hover:bg-sidebar-accent lg:hidden"
-          aria-label="Cerrar menú"
-        >
-          <X className="size-5" />
-        </button>
-
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-2 pr-10 lg:pr-2">
-          <div className="grid size-9 place-items-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
-            O
-          </div>
-
-          <div className="min-w-0">
-            <p className="truncate font-semibold tracking-tight">
-              OrganizApp2
-            </p>
-
-            {workspaces.length > 1 ? (
-              <select
-                aria-label="Espacio activo"
-                value={workspace.id}
-                onChange={(event) =>
-                  void switchWorkspace(
-                    event.target.value,
-                  )
-                }
-                className="mt-0.5 max-w-36 bg-transparent text-xs text-muted-foreground outline-none"
-              >
-                {workspaces.map(
-                  (space) => (
-                    <option
-                      key={space.id}
-                      value={space.id}
-                    >
-                      {space.name}
-                    </option>
-                  ),
-                )}
-              </select>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                {workspace.name}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Navegación */}
-        <nav className="mt-8 space-y-1 text-sm">
-          <a
-            className="flex items-center gap-3 rounded-xl bg-sidebar-accent px-3 py-2.5 font-medium"
-            href="#"
-            onClick={() =>
-              setMobileMenuOpen(false)
-            }
-          >
-            <LayoutDashboard className="size-4" />
-            Tablero
-          </a>
-
-          <a
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground"
-            href="/my-tasks"
-            onClick={() =>
-              setMobileMenuOpen(false)
-            }
-          >
-            <ListTodo className="size-4" />
-            Mis tareas
-          </a>
-
-          <a
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground"
-            href="/calendar"
-            onClick={() =>
-              setMobileMenuOpen(false)
-            }
-          >
-            <CalendarDays className="size-4" />
-            Calendario
-          </a>
-
-          <a
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground"
-            href="/activities"
-            onClick={() =>
-              setMobileMenuOpen(false)
-            }
-          >
-            <Activity className="size-4" />
-            Actividades
-          </a>
-
-          <a
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground"
-            href="/people"
-            onClick={() =>
-              setMobileMenuOpen(false)
-            }
-          >
-            <Users className="size-4" />
-            Personas
-          </a>
-        </nav>
-
-        {/* Footer sidebar */}
-        <div className="mt-auto">
-          <a
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground transition hover:bg-sidebar-accent hover:text-foreground"
-            href="/auth/signout"
-          >
-            <Settings2 className="size-4" />
-            Cerrar sesión
-          </a>
-
-          <div className="mt-3 flex items-center gap-3 border-t pt-4">
-            <div className="grid size-9 shrink-0 place-items-center rounded-full bg-[#efeaff] text-xs font-bold text-[#5b48d6]">
-              {initials(user.name)}
-            </div>
-
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">
-                {user.name}
-              </p>
-
-              <p className="truncate text-xs text-muted-foreground">
-                {user.email}
-              </p>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      {/* CONTENIDO */}
-      <section className="lg:pl-60">
-        {/* Header */}
+        {/* Header del tablero */}
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/90 px-4 backdrop-blur sm:px-7">
-          <div className="flex items-center gap-3">
-            {/* Botón hamburguesa móvil */}
-            <button
-              type="button"
-              onClick={() =>
-                setMobileMenuOpen(true)
+          <div className="relative hidden sm:block">
+            <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+
+            <Input
+              value={query}
+              onChange={(e) =>
+                setQuery(e.target.value)
               }
-              className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground lg:hidden"
-              aria-label="Abrir menú"
-            >
-              <Menu className="size-5" />
-            </button>
-
-            {/* Buscador */}
-            <div className="relative hidden sm:block">
-              <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-
-              <Input
-                value={query}
-                onChange={(e) =>
-                  setQuery(e.target.value)
-                }
-                className="h-9 w-64 rounded-xl bg-muted/50 pl-9"
-                placeholder="Buscar tareas..."
-              />
-            </div>
+              className="h-9 w-64 rounded-xl bg-muted/50 pl-9"
+              placeholder="Buscar tareas..."
+            />
           </div>
 
           {isOwner && (
@@ -1133,8 +912,6 @@ export default function TaskBoard({
             )}
           </div>
         </div>
-      </section>
-
       {/* Crear / editar tarea */}
       <Dialog
         open={dialogOpen}
@@ -1491,6 +1268,7 @@ export default function TaskBoard({
           </form>
         </DialogContent>
       </Dialog>
+      </AppSidebar>
     </main>
   );
 }
