@@ -179,7 +179,7 @@ export default function AppSidebar({
         <div className="flex items-center gap-3 px-2 pr-10 lg:pr-2">
           <div className="relative size-10 shrink-0 overflow-hidden rounded-xl shadow-sm">
             <Image
-              src="/icons/organizapp-icon.png"
+              src="/icons/icon-512.png"
               alt="OrganizApp2"
               fill
               priority
